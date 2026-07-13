@@ -100,7 +100,8 @@ Basic usage:
 ```bash
 python3 construct_ed.py \
     --input input.fasta \
-    --output output_ed.fasta
+    --output output_ed.fasta \
+    --min-anchor-len 3
 ```
 
 Equivalent short form:
@@ -108,7 +109,8 @@ Equivalent short form:
 ```bash
 python3 construct_ed.py \
     -i input.fasta \
-    -o output_ed.fasta
+    -o output_ed.fasta \
+    --min-anchor-len 3
 ```
 
 Run with multiple worker processes:
@@ -117,6 +119,7 @@ Run with multiple worker processes:
 python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta \
+    --min-anchor-len 3 \
     --threads 4
 ```
 
@@ -126,6 +129,7 @@ Write per-block statistics:
 python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta \
+    --min-anchor-len 3 \
     --stats block_statistics.tsv
 ```
 
@@ -135,6 +139,7 @@ Disable output verification:
 python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta \
+    --min-anchor-len 3 \
     --no-verify
 ```
 
