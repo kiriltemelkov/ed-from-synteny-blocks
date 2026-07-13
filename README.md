@@ -98,7 +98,7 @@ The program uses only modules from the Python standard library.
 Basic usage:
 
 ```bash
-python3 final_algo.py \
+python3 construct_ed.py \
     --input input.fasta \
     --output output_ed.fasta
 ```
@@ -106,7 +106,7 @@ python3 final_algo.py \
 Equivalent short form:
 
 ```bash
-python3 final_algo.py \
+python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta
 ```
@@ -114,7 +114,7 @@ python3 final_algo.py \
 Run with multiple worker processes:
 
 ```bash
-python3 final_algo.py \
+python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta \
     --threads 4
@@ -123,7 +123,7 @@ python3 final_algo.py \
 Write per-block statistics:
 
 ```bash
-python3 final_algo.py \
+python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta \
     --stats block_statistics.tsv
@@ -132,7 +132,7 @@ python3 final_algo.py \
 Disable output verification:
 
 ```bash
-python3 final_algo.py \
+python3 construct_ed.py \
     -i input.fasta \
     -o output_ed.fasta \
     --no-verify
@@ -141,7 +141,7 @@ python3 final_algo.py \
 Run the internal self-tests:
 
 ```bash
-python3 final_algo.py --selftest
+python3 construct_ed.py --selftest
 ```
 
 ---
