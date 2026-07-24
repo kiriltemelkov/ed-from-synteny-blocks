@@ -143,7 +143,6 @@ python3 construct_ed.py \
 | `--min-anchor-len INT` | Minimum length of an exact common anchor. Default: `8`. |
 | `--max-depth INT` | Maximum recursive gap-refinement depth. Default: `6`. |
 | `-t INT`, `--threads INT` | Number of parallel worker processes. Default: `1`. |
-| `--verify` | Verify that every output ED string spells all distinct input sequences. Enabled by default. |
 | `--stats PATH` | Write per-block statistics to a TSV file. |
 | `-h`, `--help` | Display the command-line help message. |
 
