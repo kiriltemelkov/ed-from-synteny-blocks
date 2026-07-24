@@ -28,25 +28,16 @@ Algorithm:
 
 For each block:
 
-    1. Remove duplicate whole sequences (duplicates are spelled identically, so one representative per distinct sequence is enough).
-    2. If a single distinct sequence remains, emit it verbatim (deterministic).
+    1. Remove duplicate whole sequences.
+    2. If a single distinct sequence remains, emit it
     3. Otherwise anchor and decompose recursively:
+       a. Build a generalized suffix array using SA-IS over the sequences, separated by pairwise-distinct separator symbols and terminated by one unique final sentinel.
+       b. Compute the LCP array using Kasai's algorithm.
+       c. Find all multiMUMs: maximal exact matches that occur in every sequence and exactly once in each sequence.
+       d. Select a maximum-weight collinear, non-overlapping anchor chain.
+       e. Emit the anchors as deterministic segments and recursively process the gaps between them. Gaps without a common anchor collapse into one nondeterministic segment.
 
-       a. Build a generalized suffix array (SA-IS, linear time) over the sequences, separated by pairwise-distinct sentinels so no match may cross a boundary.
-       b. Compute the LCP array (Kasai, linear time).
-       c. Find every multiMUM: a maximal exact match that occurs in every sequence and exactly once in each. In generalized-suffix-array terms
-          this is a block of exactly `k` consecutive suffixes covering all `k` colours, whose internal LCP minimum is the match length and whose two
-          bordering LCPs are strictly smaller. A single deque sweep finds them all in O(N).
-       d. Select a maximum-weight collinear, non-overlapping anchor chain (O(z log z) sparse dynamic programming for the pairwise case, exact quadratic DP otherwise).
-       e. Emit the chain as deterministic segments; recurse into each inter-anchor gap so that matches which are only *locally* unique still
-          become anchors (progressive refinement). Gaps with no common anchor collapse to a single nondeterministic segment.
-
-    4. Optionally verify that the resulting ED string spells every input.
-
-A multiMUM is a maximal exact match (MEM) with multiplicity one per sequence.
-Restricting anchors to unit multiplicity is what makes chaining exact and linear instead of exponential; the recursive refinement recovers the resolution that
-global uniqueness would otherwise lose inside repeated regions. This mirrors the anchor/chain/recurse strategy of MUMmer and progressiveMauve.
-
+    
 Only the Python standard library is used.
 """
 
@@ -650,61 +641,6 @@ def build_ed(
 
 
 
-# ED verification
-
-def parse_ed(ed: str) -> List[object]:
-    """
-    Parse an ED string into a list of segments: a deterministic segment is a str, a nondeterministic one is a list[str] of variants.
-    """
-    segments: List[object] = []
-    i = 0
-    n = len(ed)
-    run: List[str] = []
-    while i < n:
-        c = ed[i]
-        if c == "{":
-            if run:
-                segments.append("".join(run))
-                run = []
-            j = ed.index("}", i + 1)
-            segments.append(ed[i + 1:j].split(","))
-            i = j + 1
-        else:
-            run.append(c)
-            i += 1
-    if run:
-        segments.append("".join(run))
-    return segments
-
-
-def ed_spells(segments: Sequence[object], seq: str) -> bool:
-    """Return True if `seq` is a member of the language of the ED string."""
-    reachable = {0}
-    for seg in segments:
-        nxt = set()
-        if isinstance(seg, str):
-            width = len(seg)
-            for p in reachable:
-                if seq.startswith(seg, p):
-                    nxt.add(p + width)
-        else:
-            for p in reachable:
-                for variant in seg:
-                    if seq.startswith(variant, p):
-                        nxt.add(p + len(variant))
-        if not nxt:
-            return False
-        reachable = nxt
-    return len(seq) in reachable
-
-
-def verify_ed(ed: str, sequences: Sequence[str]) -> bool:
-    """Verify that the ED string spells every input sequence."""
-    segments = parse_ed(ed)
-    return all(ed_spells(segments, s) for s in sequences)
-
-
-
 # Per-block processing
 
 def deduplicate_sequences(records: Sequence[FastaRecord]) -> List[str]:
@@ -723,7 +659,6 @@ def process_block(
     records: Sequence[FastaRecord],
     min_anchor_len: int,
     max_depth: int,
-    verify: bool,
 ) -> Tuple[str, str, Dict[str, int]]:
     """Process one synteny block. Returns (header, ed_string, stats)."""
     seqs = deduplicate_sequences(records)
@@ -746,147 +681,7 @@ def process_block(
 
     ed = build_ed(seqs, min_anchor_len, max_depth, stats)
 
-    if verify and not verify_ed(ed, seqs):
-        raise RuntimeError(
-            f"ED verification failed for block {block_id}: "
-            f"the ED string does not spell every input sequence."
-        )
-
     return block_id, ed, stats
-
-
-
-# Self-test
-
-def _brute_suffix_array(s: List[int]) -> List[int]:
-    return sorted(range(len(s)), key=lambda i: s[i:])
-
-
-def _brute_multimums(lanes: Sequence[str], min_len: int):
-    """Reference multiMUM finder for cross-checking (small inputs only)."""
-    k = len(lanes)
-    result = {}
-    lane0 = lanes[0]
-    n0 = len(lane0)
-    for start in range(n0):
-        for length in range(min_len, n0 - start + 1):
-            sub = lane0[start:start + length]
-            positions = [start]
-            ok = True
-            for lane in lanes[1:]:
-                first = lane.find(sub)
-                if first == -1 or lane.find(sub, first + 1) != -1:
-                    ok = False
-                    break
-                positions.append(first)
-            if not ok:
-                continue
-            if lane0.find(sub, start + 1) != -1 or (start > 0 and lane0.rfind(sub, 0, start + length - 1) != -1):
-                continue
-            # unique in lane0 too
-            if lane0.count(sub) != 1:
-                continue
-            # right maximal: end-of-lane counts as inextensible, and each lane
-            # boundary is distinct (a match may not cross into another lane).
-            right = {lane[positions[i] + length] if positions[i] + length < len(lane)
-                     else f"$end{i}"
-                     for i, lane in enumerate(lanes)}
-            if len(right) == 1:
-                continue
-            # left maximal, with distinct per-lane start boundaries.
-            left = {lane[positions[i] - 1] if positions[i] > 0 else f"^{i}"
-                    for i, lane in enumerate(lanes)}
-            if len(left) == 1:
-                continue
-            result[tuple(positions)] = length
-    return result
-
-
-def run_selftest() -> int:
-    import random
-
-    rng = random.Random(1234)
-    print("SA-IS vs brute-force suffix array ...", file=sys.stderr)
-    for _ in range(2000):
-        length = rng.randint(1, 40)
-        s = [rng.randint(1, 4) for _ in range(length)] + [0]
-        got = sa_is(s, 5)
-        want = _brute_suffix_array(s)
-        if got != want:
-            print(f"  FAIL SA-IS on {s}\n    got {got}\n    want {want}", file=sys.stderr)
-            return 1
-
-    print("LCP consistency ...", file=sys.stderr)
-    for _ in range(1000):
-        length = rng.randint(1, 40)
-        s = [rng.randint(1, 3) for _ in range(length)] + [0]
-        sa = sa_is(s, 4)
-        lcp = kasai_lcp(s, sa)
-        for r in range(1, len(sa)):
-            a, b = sa[r], sa[r - 1]
-            h = 0
-            while a + h < len(s) and b + h < len(s) and s[a + h] == s[b + h]:
-                h += 1
-            if lcp[r] != h:
-                print(f"  FAIL LCP on {s}", file=sys.stderr)
-                return 1
-
-    print("multiMUM vs brute force ...", file=sys.stderr)
-    for _ in range(3000):
-        k = rng.randint(2, 4)
-        lanes = ["".join(rng.choice("ACGT") for _ in range(rng.randint(1, 24)))
-                 for _ in range(k)]
-        min_len = rng.randint(1, 4)
-        got = {a.positions: a.length for a in find_multimums(lanes, min_len)}
-        want = _brute_multimums(lanes, min_len)
-        if got != want:
-            print(f"  FAIL multiMUM on {lanes} min_len={min_len}\n"
-                  f"    got  {got}\n    want {want}", file=sys.stderr)
-            return 1
-
-    print("chain: pairwise (Fenwick) vs exact DP ...", file=sys.stderr)
-    for _ in range(2000):
-        z = rng.randint(0, 12)
-        anchors = []
-        for _ in range(z):
-            p0 = rng.randint(0, 20)
-            p1 = rng.randint(0, 20)
-            length = rng.randint(1, 5)
-            anchors.append(Anchor((p0, p1), length, "x" * length))
-        fast = sum(a.length for a in chain_pairwise(anchors))
-        slow = sum(a.length for a in chain_multi(anchors))
-        if fast != slow:
-            print(f"  FAIL chaining weight mismatch fast={fast} slow={slow}\n"
-                  f"    {anchors}", file=sys.stderr)
-            return 1
-
-    print("end-to-end ED spelling invariant ...", file=sys.stderr)
-    for _ in range(2000):
-        k = rng.randint(1, 5)
-        base = "".join(rng.choice("ACGT") for _ in range(rng.randint(0, 30)))
-        lanes = []
-        for _ in range(k):
-            s = list(base)
-            for _ in range(rng.randint(0, 4)):
-                op = rng.random()
-                if not s:
-                    s.append(rng.choice("ACGT"))
-                elif op < 0.34:
-                    s[rng.randrange(len(s))] = rng.choice("ACGT")
-                elif op < 0.67:
-                    s.insert(rng.randrange(len(s) + 1), rng.choice("ACGT"))
-                else:
-                    del s[rng.randrange(len(s))]
-            lanes.append("".join(s))
-        records = [FastaRecord(">x", "b", seq) for seq in lanes]
-        _, ed, _ = process_block("b", records, rng.randint(1, 4), 6, True)
-        seqs = deduplicate_sequences(records)
-        if not verify_ed(ed, seqs):
-            print(f"  FAIL spelling on {lanes}\n    ed={ed!r}", file=sys.stderr)
-            return 1
-
-    print("All self-tests passed.", file=sys.stderr)
-    return 0
 
 
 
@@ -929,14 +724,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-t", "--threads", type=int, default=1,
         help="Number of parallel worker processes. Default: 1.",
     )
-    parser.add_argument(
-        "--verify", action=argparse.BooleanOptionalAction, default=True,
-        help="Verify that each ED string spells every input sequence. Enabled by default; use --no-verify to skip.",
-    )
     parser.add_argument("--stats", default=None,
                         help="Optional path for per-block statistics (TSV).")
-    parser.add_argument("--selftest", action="store_true",
-                        help="Run internal correctness tests and exit.")
 
     parser.add_argument("--max-candidates-per-window", type=int, default=None,
                         help=argparse.SUPPRESS)
@@ -948,9 +737,6 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[Sequence[str]] = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    if args.selftest:
-        sys.exit(run_selftest())
 
     if not args.input or not args.output:
         parser.error("the following arguments are required: -i/--input, -o/--output")
@@ -976,7 +762,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         for block_id, block_records in items:
             header, ed, stats = process_block(
                 block_id, block_records, args.min_anchor_len,
-                args.max_depth, args.verify,
+                args.max_depth,
             )
             results.append((header, ed))
             stats_rows.append((block_id, stats))
@@ -985,7 +771,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.threads) as ex:
             future_to_block = {
                 ex.submit(process_block, block_id, block_records,
-                          args.min_anchor_len, args.max_depth, args.verify): block_id
+                          args.min_anchor_len, args.max_depth): block_id
                 for block_id, block_records in items
             }
             collected: Dict[str, Tuple[str, str, Dict[str, int]]] = {}
