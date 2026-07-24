@@ -132,23 +132,6 @@ python3 construct_ed.py \
     --min-anchor-len 3 \
     --stats block_statistics.tsv
 ```
-
-Disable output verification:
-
-```bash
-python3 construct_ed.py \
-    -i input.fasta \
-    -o output_ed.fasta \
-    --min-anchor-len 3 \
-    --no-verify
-```
-
-Run the internal self-tests:
-
-```bash
-python3 construct_ed.py --selftest
-```
-
 ---
 
 ## CLI Arguments
@@ -161,9 +144,7 @@ python3 construct_ed.py --selftest
 | `--max-depth INT` | Maximum recursive gap-refinement depth. Default: `6`. |
 | `-t INT`, `--threads INT` | Number of parallel worker processes. Default: `1`. |
 | `--verify` | Verify that every output ED string spells all distinct input sequences. Enabled by default. |
-| `--no-verify` | Disable ED-string verification. |
 | `--stats PATH` | Write per-block statistics to a TSV file. |
-| `--selftest` | Run the internal randomized correctness tests and exit. |
 | `-h`, `--help` | Display the command-line help message. |
 
 The statistics file contains the following columns:
